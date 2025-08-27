@@ -2,6 +2,100 @@
 
 A comprehensive TypeScript-based API framework demonstrating enterprise-grade patterns, resilience strategies, and production-ready best practices for modern web applications.
 
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Node.js** >= 18.0.0 (for built-in fetch support)
+- **npm** or **yarn** package manager
+- **Git** (for cloning the repository)
+
+### Quick Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd playon
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Build the project:**
+   ```bash
+   npm run build
+   ```
+
+4. **Run the comprehensive demo:**
+   ```bash
+   npm start
+   ```
+
+   Or build and run in one step:
+   ```bash
+   npm run dev
+   ```
+
+### What You'll See
+
+The demo showcases all implemented patterns in action:
+
+- **🔐 Authentication & Authorization** - Fail-fast security checks
+- **🚦 Rate Limiting** - Token bucket algorithm with burst handling
+- **📊 Performance Monitoring** - Structured logging with correlation IDs
+- **🔄 API Versioning** - Multiple negotiation strategies
+- **⚡ Circuit Breaker** - Resilience patterns with automatic recovery
+- **🗄️ Intelligent Caching** - TTL and LRU eviction strategies
+- **🏥 Health Monitoring** - Kubernetes-compatible probes
+
+### Expected Output
+
+```
+============================================================
+🔐 AUTHENTICATION & AUTHORIZATION DEMONSTRATIONS
+============================================================
+✅ Authentication and Authorization: Implemented with fail-fast checks
+✅ Rate Limiting: Token bucket algorithm with retry logic
+✅ Performance Monitoring: Structured event logging with JSONL format
+...
+🚀 Demo completed successfully!
+✅ All background processes stopped - exiting gracefully.
+```
+
+### Project Structure
+
+```
+playon/
+├── src/                      # TypeScript source files
+│   ├── UsersApi.ts          # Main API client
+│   ├── AuthService.ts       # Authentication system
+│   ├── CircuitBreaker.ts    # Resilience patterns
+│   ├── CacheManager.ts      # Caching system
+│   ├── HealthCheck.ts       # Health monitoring
+│   └── index.ts             # Demo scenarios
+├── dist/                     # Compiled JavaScript
+├── package.json             # Dependencies and scripts
+└── README.md               # This documentation
+```
+
+### Available Scripts
+
+- `npm run build` - Compile TypeScript to JavaScript
+- `npm start` - Run the compiled demo
+- `npm run dev` - Build and run in one step
+- `npm test` - Run test suite (when available)
+
+### Next Steps
+
+After running the demo, explore:
+
+1. **Individual Components** - Check `src/` directory for implementation details
+2. **Performance Logs** - View `performance-dev.log` for detailed metrics
+3. **API Reference** - See the comprehensive documentation below
+4. **Customization** - Modify factory configurations for different environments
+
 ## 🎯 Overview
 
 This project showcases a complete API framework built from the ground up, implementing critical patterns that solve real-world production challenges. Each component addresses specific problems encountered in distributed systems, microservices architectures, and high-scale applications.
