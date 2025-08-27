@@ -1,0 +1,27 @@
+{
+  "name": "api-design-demo",
+  "version": "1.0.0",
+  "description": "A bare-bones Node.js TypeScript project for demonstrating API design concepts",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "keywords": [
+    "api",
+    "typescript",
+    "node",
+    "demo"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
