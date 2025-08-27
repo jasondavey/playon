@@ -624,6 +624,153 @@ async function main() {
     console.error("❌ Circuit breaker demo error:", error);
   }
 
+  // === Caching Demonstrations ===
+  console.log("\n" + "=".repeat(60));
+  console.log("🗄️ CACHING DEMONSTRATIONS");
+  console.log("=".repeat(60));
+
+  async function demoCaching() {
+    console.log("\n" + "=".repeat(60));
+    console.log("🗄️  DEMO 6: REQUEST/RESPONSE CACHING SYSTEM");
+    console.log("=".repeat(60));
+
+    const authService = AuthServiceFactory.createDevelopment();
+    const performanceMonitor =
+      PerformanceMonitorFactory.createDevelopment();
+    const versioningService = ApiVersioningFactory.createUrlPathVersioning();
+    const circuitBreaker =
+      CircuitBreakerFactory.createApiCircuitBreaker("CachingDemo");
+
+    // Create API client with default cache
+    const api = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      { "Content-Type": "application/json" },
+      { credentials: "same-origin" },
+      {},
+      undefined,
+      authService,
+      performanceMonitor,
+      versioningService,
+      circuitBreaker
+    );
+
+    console.log("\n📊 Initial Cache Stats:");
+    console.log(JSON.stringify(api.getCacheStats(), null, 2));
+
+    try {
+      // Scenario 1: Cache Miss - First Request
+      console.log("\n🔍 Scenario 1: Cache Miss (First Request)");
+      console.log("Making first request to /users/1...");
+      const startTime1 = Date.now();
+      const user1 = await api.getUser(1);
+      const duration1 = Date.now() - startTime1;
+      console.log(`✅ User retrieved: ${user1.name} (${duration1}ms)`);
+      console.log("📊 Cache Stats after first request:");
+      console.log(JSON.stringify(api.getCacheStats(), null, 2));
+
+      // Scenario 2: Cache Hit - Same Request
+      console.log("\n🎯 Scenario 2: Cache Hit (Same Request)");
+      console.log("Making identical request to /users/1...");
+      const startTime2 = Date.now();
+      const user2 = await api.getUser(1);
+      const duration2 = Date.now() - startTime2;
+      console.log(
+        `✅ User retrieved from cache: ${user2.name} (${duration2}ms)`
+      );
+      console.log(
+        `🚀 Performance improvement: ${(
+          ((duration1 - duration2) / duration1) *
+          100
+        ).toFixed(1)}% faster`
+      );
+      console.log("📊 Cache Stats after cache hit:");
+      console.log(JSON.stringify(api.getCacheStats(), null, 2));
+
+      // Scenario 3: Multiple Cache Hits
+      console.log("\n⚡ Scenario 3: Multiple Cache Hits");
+      console.log("Making multiple requests to cached data...");
+      const multiStartTime = Date.now();
+      await Promise.all([api.getUser(1), api.getUser(1), api.getUser(1)]);
+      const multiDuration = Date.now() - multiStartTime;
+      console.log(`✅ 3 requests completed in ${multiDuration}ms`);
+      console.log("📊 Cache Stats after multiple hits:");
+      console.log(JSON.stringify(api.getCacheStats(), null, 2));
+
+      // Scenario 4: Cache Invalidation via Write Operation
+      console.log("\n🔄 Scenario 4: Cache Invalidation (Write Operation)");
+      console.log("Updating user (will invalidate cache)...");
+      await api.updateUser(1, {
+        name: "Updated User",
+        email: "updated@example.com",
+      });
+      console.log("✅ User updated - cache invalidated");
+
+      console.log("Making request to /users/1 after invalidation...");
+      const startTime4 = Date.now();
+      const user4 = await api.getUser(1);
+      const duration4 = Date.now() - startTime4;
+      console.log(
+        `✅ User retrieved: ${user4.name} (${duration4}ms - cache miss expected)`
+      );
+      console.log("📊 Cache Stats after invalidation and refetch:");
+      console.log(JSON.stringify(api.getCacheStats(), null, 2));
+
+      // Scenario 5: Cache Warmup
+      console.log("\n🔥 Scenario 5: Cache Warmup");
+      console.log("Clearing cache and performing warmup...");
+      api.clearCache();
+      console.log("📊 Cache Stats after clear:");
+      console.log(JSON.stringify(api.getCacheStats(), null, 2));
+
+      console.log("Performing cache warmup...");
+      await api.warmupCache();
+      console.log("📊 Cache Stats after warmup:");
+      console.log(JSON.stringify(api.getCacheStats(), null, 2));
+
+      // Scenario 6: Cache Performance Comparison
+      console.log("\n📈 Scenario 6: Cache Performance Comparison");
+      console.log("Comparing cached vs non-cached performance...");
+
+      // Clear cache for fair comparison
+      api.clearCache();
+
+      // Non-cached requests
+      console.log("Making 5 non-cached requests...");
+      const nonCachedStart = Date.now();
+      for (let i = 0; i < 5; i++) {
+        await api.getUsers();
+        api.clearCache(); // Clear after each to prevent caching
+      }
+      const nonCachedDuration = Date.now() - nonCachedStart;
+
+      // Cached requests
+      console.log("Making 5 cached requests...");
+      const cachedStart = Date.now();
+      for (let i = 0; i < 5; i++) {
+        await api.getUsers(); // First will cache, rest will hit cache
+      }
+      const cachedDuration = Date.now() - cachedStart;
+
+      console.log(`📊 Performance Comparison:`);
+      console.log(`   Non-cached: ${nonCachedDuration}ms`);
+      console.log(`   Cached: ${cachedDuration}ms`);
+      console.log(
+        `   Improvement: ${(
+          ((nonCachedDuration - cachedDuration) / nonCachedDuration) *
+          100
+        ).toFixed(1)}% faster`
+      );
+
+      // Final cache metrics
+      console.log("\n📊 Final Cache Metrics:");
+      console.log(JSON.stringify(api.getCacheStats(), null, 2));
+    } catch (error) {
+      console.error("❌ Caching demo error:", error);
+    }
+  }
+
+  await demoCaching();
+
   console.log("\n" + "=".repeat(60));
   console.log("📊 DEMO SUMMARY");
   console.log("=".repeat(60));

@@ -5,6 +5,7 @@ import { AuthService } from "./AuthService.js";
 import { PerformanceMonitor, PerformanceTimer } from "./PerformanceMonitor.js";
 import { ApiVersioningService } from "./ApiVersioning.js";
 import { CircuitBreaker, CircuitBreakerFactory } from "./CircuitBreaker.js";
+import { CacheManager, CacheFactory } from "./CacheManager.js";
 
 /**
  * User data structure
@@ -95,6 +96,7 @@ export class UsersApi {
   private performanceMonitor?: PerformanceMonitor;
   private versioningService?: ApiVersioningService;
   private circuitBreaker?: CircuitBreaker;
+  private cache: CacheManager<any>;
 
   constructor(
     baseUrl: string,
@@ -105,9 +107,10 @@ export class UsersApi {
     authService?: AuthService,
     performanceMonitor?: PerformanceMonitor,
     versioningService?: ApiVersioningService,
-    circuitBreaker?: CircuitBreaker
+    circuitBreaker?: CircuitBreaker,
+    cache?: CacheManager<any>
   ) {
-    this.baseUrl = baseUrl;
+    this.baseUrl = baseUrl.replace(/\/$/, ""); // Remove trailing slash
     this.defaultHeaders = defaultHeaders;
     this.corsOptions = {
       credentials: "same-origin",
@@ -147,6 +150,9 @@ export class UsersApi {
     this.circuitBreaker =
       circuitBreaker ||
       CircuitBreakerFactory.createApiCircuitBreaker("UsersApi");
+
+    // Set cache
+    this.cache = cache || CacheFactory.createApiCache<any>("users-api");
   }
 
   /**
@@ -155,6 +161,12 @@ export class UsersApi {
   async getUsers(correlationId?: string): Promise<User[]> {
     const id = correlationId || randomUUID();
     const timer = this.performanceMonitor?.createTimer();
+
+    const cacheKey = this.generateCacheKey("GET", "/users");
+    const cached = await this.checkCache<User[]>(cacheKey, id);
+    if (cached) {
+      return cached;
+    }
 
     try {
       return await this.executeWithAuth(
@@ -214,6 +226,9 @@ export class UsersApi {
               this.calculateResponseSize(result)
             );
 
+            // Cache result
+            this.cacheResponse(cacheKey, result, this.getCacheTags(), id);
+
             return result;
           }, id);
         },
@@ -245,6 +260,12 @@ export class UsersApi {
 
     // Validate input parameters
     const validatedUserId = UserValidator.validateUserId(userId, id);
+
+    const cacheKey = this.generateCacheKey("GET", `/users/${validatedUserId}`);
+    const cached = await this.checkCache<User>(cacheKey, id);
+    if (cached) {
+      return cached;
+    }
 
     try {
       return await this.executeWithAuth(
@@ -302,6 +323,14 @@ export class UsersApi {
               response.status,
               requestSize,
               this.calculateResponseSize(result)
+            );
+
+            // Cache result
+            this.cacheResponse(
+              cacheKey,
+              result,
+              this.getCacheTags(validatedUserId),
+              id
             );
 
             return result;
@@ -411,6 +440,9 @@ export class UsersApi {
               requestSize,
               this.calculateResponseSize(result)
             );
+
+            // Invalidate cache
+            this.invalidateCache(this.getCacheTags(), id);
 
             return result;
           }, id);
@@ -522,6 +554,9 @@ export class UsersApi {
               this.calculateResponseSize(result)
             );
 
+            // Invalidate cache
+            this.invalidateCache(this.getCacheTags(validatedUserId), id);
+
             return result;
           }, id);
         },
@@ -632,6 +667,9 @@ export class UsersApi {
               this.calculateResponseSize(result)
             );
 
+            // Invalidate cache
+            this.invalidateCache(this.getCacheTags(validatedUserId), id);
+
             return result;
           }, id);
         },
@@ -715,6 +753,9 @@ export class UsersApi {
               requestSize,
               0
             );
+
+            // Invalidate cache
+            this.invalidateCache(this.getCacheTags(validatedUserId), id);
           }, id);
         },
         id,
@@ -998,6 +1039,207 @@ export class UsersApi {
       if (apiVersion) {
         console.log(`📋 API Version: ${apiVersion}`);
       }
+    }
+  }
+
+  /**
+   * Generate cache key for API requests
+   */
+  private generateCacheKey(
+    method: string,
+    endpoint: string,
+    params?: any
+  ): string {
+    const baseKey = `${method}:${endpoint}`;
+    if (params && Object.keys(params).length > 0) {
+      const paramString = new URLSearchParams(params).toString();
+      return `${baseKey}?${paramString}`;
+    }
+    return baseKey;
+  }
+
+  /**
+   * Get cache tags for invalidation
+   */
+  private getCacheTags(userId?: string | number): string[] {
+    const tags = ["users"];
+    if (userId) {
+      tags.push(`user:${userId}`);
+    }
+    return tags;
+  }
+
+  /**
+   * Check cache for GET requests
+   */
+  private async checkCache<T>(
+    cacheKey: string,
+    correlationId: string
+  ): Promise<T | null> {
+    try {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        this.performanceMonitor?.logEvent(
+          correlationId,
+          "GET",
+          cacheKey,
+          0,
+          200
+        );
+        return cached;
+      }
+
+      this.performanceMonitor?.logEvent(correlationId, "GET", cacheKey, 0, 404);
+      return null;
+    } catch (error) {
+      this.performanceMonitor?.logEvent(
+        correlationId,
+        "GET",
+        cacheKey,
+        0,
+        500,
+        error instanceof Error ? error.message : "Unknown error"
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Cache API response
+   */
+  private cacheResponse<T>(
+    cacheKey: string,
+    data: T,
+    tags: string[],
+    correlationId: string,
+    ttl?: number
+  ): void {
+    try {
+      this.cache.set(cacheKey, data, { ttl, tags });
+      this.performanceMonitor?.logEvent(
+        correlationId,
+        "CACHE",
+        cacheKey,
+        0,
+        200
+      );
+    } catch (error) {
+      this.performanceMonitor?.logEvent(
+        correlationId,
+        "CACHE",
+        cacheKey,
+        0,
+        500,
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+  }
+
+  /**
+   * Invalidate cache entries
+   */
+  private invalidateCache(tags: string[], correlationId: string): void {
+    try {
+      this.cache.invalidateByTags(tags);
+      this.performanceMonitor?.logEvent(
+        correlationId,
+        "CACHE",
+        `invalidate:${tags.join(",")}`,
+        0,
+        200
+      );
+    } catch (error) {
+      this.performanceMonitor?.logEvent(
+        correlationId,
+        "CACHE",
+        `invalidate:${tags.join(",")}`,
+        0,
+        500,
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+  }
+
+  /**
+   * Get cache metrics for monitoring
+   */
+  getCacheMetrics(): any {
+    return this.cache.getMetrics();
+  }
+
+  /**
+   * Get cache statistics summary
+   */
+  getCacheStats(): { [key: string]: any } {
+    const metrics = this.cache.getMetrics();
+    const totalRequests = metrics.hits + metrics.misses;
+    const hitRate =
+      totalRequests > 0
+        ? (metrics.hits / totalRequests * 100).toFixed(2)
+        : "0.00";
+
+    return {
+      name: "users-api-cache",
+      hitRate: `${hitRate}%`,
+      totalRequests,
+      hits: metrics.hits,
+      misses: metrics.misses,
+      evictions: metrics.evictions,
+      expirations: metrics.expirations,
+      currentSize: metrics.size,
+      maxSize: 1000, // Default from factory
+      memoryUsage: `${(metrics.memoryUsage / 1024 / 1024).toFixed(2)} MB`,
+    };
+  }
+
+  /**
+   * Log cache performance metrics
+   */
+  private logCacheMetrics(correlationId: string): void {
+    const stats = this.getCacheStats();
+    this.performanceMonitor?.logEvent(
+      correlationId,
+      "CACHE",
+      "metrics",
+      0,
+      200
+    );
+  }
+
+  /**
+   * Clear cache and log action
+   */
+  clearCache(correlationId?: string): void {
+    const id = correlationId || randomUUID();
+    const statsBefore = this.getCacheStats();
+
+    this.cache.clear();
+
+    this.performanceMonitor?.logEvent(id, "CACHE", "clear", 0, 200);
+  }
+
+  /**
+   * Warm up cache with common requests
+   */
+  async warmupCache(correlationId?: string): Promise<void> {
+    const id = correlationId || randomUUID();
+
+    this.performanceMonitor?.logEvent(id, "CACHE", "warmup-start", 0, 200);
+
+    try {
+      // Warm up with users list
+      await this.getUsers(id);
+
+      this.performanceMonitor?.logEvent(id, "CACHE", "warmup-complete", 0, 200);
+    } catch (error) {
+      this.performanceMonitor?.logEvent(
+        id,
+        "CACHE",
+        "warmup-failed",
+        0,
+        500,
+        error instanceof Error ? error.message : "Unknown error"
+      );
     }
   }
 }
