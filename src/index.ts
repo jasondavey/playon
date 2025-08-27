@@ -5,28 +5,18 @@
 
 import {
   UsersApi,
-  User,
   CreateUserData,
-  UpdateUserData,
   CorsOptions,
   IdempotencyOptions,
 } from "./UsersApi.js";
 import { ValidationError } from "./UserValidator.js";
+import { RateLimitError, RateLimitOptions } from "./RateLimiter.js";
 import {
-  RateLimiterFactory,
-  RateLimitError,
-  RateLimitOptions,
-} from "./RateLimiter.js";
-import {
-  AuthService,
   AuthServiceFactory,
   AuthenticationError,
   AuthorizationError,
 } from "./AuthService.js";
-import {
-  PerformanceMonitor,
-  PerformanceMonitorFactory,
-} from "./PerformanceMonitor.js";
+import { PerformanceMonitorFactory } from "./PerformanceMonitor.js";
 
 // Example usage
 async function main() {
