@@ -1,20 +1,27 @@
 /**
- * Simple API Design Demo
- * Demonstrates basic API concepts using Node.js built-in fetch with CORS best practices and idempotency
+ * Users API Design Demo
+ * Demonstrates concrete User interface with CORS best practices and idempotency
  */
 
-import { ApiClient, CorsOptions, IdempotencyOptions } from "./ApiClient.js";
+import {
+  UsersApi,
+  User,
+  CreateUserData,
+  UpdateUserData,
+  CorsOptions,
+  IdempotencyOptions,
+} from "./UsersApi.js";
 
 // Example usage
 async function main() {
-  console.log("🚀 API Design Demo Starting...");
+  console.log("🚀 Users API Design Demo Starting...");
 
-  // Example 1: Basic client with default settings
-  console.log("\n📋 Example 1: Basic client (no idempotency)");
-  const basicClient = new ApiClient("https://jsonplaceholder.typicode.com");
+  // Example 1: Basic users API client
+  console.log("\n📋 Example 1: Basic Users API client");
+  const basicUsersApi = new UsersApi("https://jsonplaceholder.typicode.com");
 
-  // Example 2: Client with idempotency enabled
-  console.log("\n📋 Example 2: Client with automatic idempotency");
+  // Example 2: Users API with idempotency enabled
+  console.log("\n📋 Example 2: Users API with automatic idempotency");
   const corsOptions: CorsOptions = {
     credentials: "include",
     allowedHeaders: [
@@ -32,7 +39,7 @@ async function main() {
     headerName: "Idempotency-Key",
   };
 
-  const idempotentClient = new ApiClient(
+  const idempotentUsersApi = new UsersApi(
     "https://jsonplaceholder.typicode.com",
     {},
     corsOptions,
@@ -40,59 +47,53 @@ async function main() {
   );
 
   try {
-    // GET request example (idempotent by nature)
-    console.log("\n📥 Fetching posts with basic client...");
-    const posts = await basicClient.get<
-      Array<{ id: number; title: string; body: string }>
-    >("/posts?_limit=2");
-    console.log(`Retrieved ${posts.length} posts:`);
-    posts.forEach((post) => console.log(`- ${post.title}`));
+    // GET all users
+    console.log("\n👥 Fetching all users...");
+    const users: User[] = await basicUsersApi.getUsers();
+    console.log(`Retrieved ${users.length} users:`);
+    users
+      .slice(0, 3)
+      .forEach((user) => console.log(`- ${user.name} (${user.email})`));
 
-    // POST request with automatic idempotency
-    console.log("\n📤 Creating post with automatic idempotency...");
-    const newPost1 = await idempotentClient.post<{
-      id: number;
-      title: string;
-      body: string;
-    }>("/posts", {
-      title: "Idempotent API Demo",
-      body: "This request uses automatic idempotency key generation",
-      userId: 1,
-    });
-    console.log(`Created post with ID: ${newPost1.id}`);
+    // GET specific user
+    console.log("\n👤 Fetching specific user...");
+    const user: User = await basicUsersApi.getUser(1);
+    console.log(`User: ${user.name} - ${user.email}`);
 
-    // POST request with custom idempotency key
-    console.log("\n📤 Creating post with custom idempotency key...");
-    const customIdempotencyKey = "user-action-payment-12345";
-    const newPost2 = await basicClient.post<{
-      id: number;
-      title: string;
-      body: string;
-    }>(
-      "/posts",
-      {
-        title: "Custom Idempotency Demo",
-        body: "This request uses a custom idempotency key for critical operations",
-        userId: 1,
-      },
+    // CREATE new user with automatic idempotency
+    console.log("\n➕ Creating new user with automatic idempotency...");
+    const newUserData: CreateUserData = {
+      name: "John Doe",
+      username: "johndoe",
+      email: "john.doe@example.com",
+      phone: "555-0123",
+      website: "johndoe.dev",
+    };
+    const createdUser: User = await idempotentUsersApi.createUser(newUserData);
+    console.log(`Created user with ID: ${createdUser.id}`);
+
+    // UPDATE user with custom idempotency key
+    console.log("\n🔄 Updating user with custom idempotency key...");
+    const updateData: UpdateUserData = {
+      name: "John Smith",
+      email: "john.smith@example.com",
+    };
+    const customIdempotencyKey = "user-update-operation-12345";
+    const updatedUser: User = await basicUsersApi.updateUser(
+      1,
+      updateData,
       "custom-correlation-id",
       customIdempotencyKey
     );
-    console.log(`Created post with ID: ${newPost2.id}`);
+    console.log(`Updated user: ${updatedUser.name}`);
 
-    // PUT request with idempotency (for updates)
-    console.log("\n🔄 Updating post with idempotency...");
-    const updatedPost = await idempotentClient.put<{
-      id: number;
-      title: string;
-      body: string;
-    }>("/posts/1", {
-      id: 1,
-      title: "Updated Post with Idempotency",
-      body: "This update operation is idempotent",
-      userId: 1,
-    });
-    console.log(`Updated post: ${updatedPost.title}`);
+    // PATCH user (partial update)
+    console.log("\n🔧 Partially updating user...");
+    const patchData: UpdateUserData = {
+      phone: "555-9999",
+    };
+    const patchedUser: User = await idempotentUsersApi.patchUser(1, patchData);
+    console.log(`Patched user phone: ${patchedUser.phone || "N/A"}`);
   } catch (error) {
     console.error(
       "❌ API Error:",
