@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { UserValidator } from "./UserValidator.js";
 
 /**
  * User data structure
@@ -6,7 +7,7 @@ import { randomUUID } from "crypto";
 export interface User {
   id?: number;
   name: string;
-  username: string;
+  username?: string;
   email: string;
   phone?: string;
   website?: string;
@@ -130,7 +131,10 @@ export class UsersApi {
     }
 
     console.log(`[${id}] Response received: ${response.status}`);
-    return this.parseResponse<User[]>(response);
+    const rawData = await this.parseResponse<unknown>(response);
+
+    // Validate response data
+    return UserValidator.validateUsersArray(rawData, id);
   }
 
   /**
@@ -138,9 +142,13 @@ export class UsersApi {
    */
   async getUser(userId: number, correlationId?: string): Promise<User> {
     const id = correlationId || randomUUID();
-    console.log(`[${id}] GET ${this.baseUrl}/users/${userId}`);
 
-    const response = await fetch(`${this.baseUrl}/users/${userId}`, {
+    // Validate input parameters
+    const validatedUserId = UserValidator.validateUserId(userId, id);
+
+    console.log(`[${id}] GET ${this.baseUrl}/users/${validatedUserId}`);
+
+    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
       method: "GET",
       headers: {
         ...this.defaultHeaders,
@@ -155,7 +163,10 @@ export class UsersApi {
     }
 
     console.log(`[${id}] Response received: ${response.status}`);
-    return this.parseResponse<User>(response);
+    const rawData = await this.parseResponse<unknown>(response);
+
+    // Validate response data
+    return UserValidator.validateUser(rawData, id);
   }
 
   /**
@@ -167,6 +178,13 @@ export class UsersApi {
     idempotencyKey?: string
   ): Promise<User> {
     const id = correlationId || randomUUID();
+
+    // Validate input data
+    const validatedUserData = UserValidator.validateCreateUserData(
+      userData,
+      id
+    );
+
     console.log(`[${id}] POST ${this.baseUrl}/users`);
 
     const headers: Record<string, string> = {
@@ -188,7 +206,7 @@ export class UsersApi {
       method: "POST",
       headers,
       credentials: this.corsOptions.credentials,
-      body: JSON.stringify(userData),
+      body: JSON.stringify(validatedUserData),
     });
 
     if (!response.ok) {
@@ -197,7 +215,10 @@ export class UsersApi {
     }
 
     console.log(`[${id}] Response received: ${response.status}`);
-    return this.parseResponse<User>(response);
+    const rawData = await this.parseResponse<unknown>(response);
+
+    // Validate response data
+    return UserValidator.validateUser(rawData, id);
   }
 
   /**
@@ -210,7 +231,15 @@ export class UsersApi {
     idempotencyKey?: string
   ): Promise<User> {
     const id = correlationId || randomUUID();
-    console.log(`[${id}] PUT ${this.baseUrl}/users/${userId}`);
+
+    // Validate input parameters
+    const validatedUserId = UserValidator.validateUserId(userId, id);
+    const validatedUserData = UserValidator.validateUpdateUserData(
+      userData,
+      id
+    );
+
+    console.log(`[${id}] PUT ${this.baseUrl}/users/${validatedUserId}`);
 
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
@@ -227,11 +256,11 @@ export class UsersApi {
       console.log(`[${id}] Idempotency-Key: ${key}`);
     }
 
-    const response = await fetch(`${this.baseUrl}/users/${userId}`, {
+    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
       method: "PUT",
       headers,
       credentials: this.corsOptions.credentials,
-      body: JSON.stringify(userData),
+      body: JSON.stringify(validatedUserData),
     });
 
     if (!response.ok) {
@@ -240,7 +269,10 @@ export class UsersApi {
     }
 
     console.log(`[${id}] Response received: ${response.status}`);
-    return this.parseResponse<User>(response);
+    const rawData = await this.parseResponse<unknown>(response);
+
+    // Validate response data
+    return UserValidator.validateUser(rawData, id);
   }
 
   /**
@@ -253,7 +285,15 @@ export class UsersApi {
     idempotencyKey?: string
   ): Promise<User> {
     const id = correlationId || randomUUID();
-    console.log(`[${id}] PATCH ${this.baseUrl}/users/${userId}`);
+
+    // Validate input parameters
+    const validatedUserId = UserValidator.validateUserId(userId, id);
+    const validatedUserData = UserValidator.validateUpdateUserData(
+      userData,
+      id
+    );
+
+    console.log(`[${id}] PATCH ${this.baseUrl}/users/${validatedUserId}`);
 
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
@@ -270,11 +310,11 @@ export class UsersApi {
       console.log(`[${id}] Idempotency-Key: ${key}`);
     }
 
-    const response = await fetch(`${this.baseUrl}/users/${userId}`, {
+    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
       method: "PATCH",
       headers,
       credentials: this.corsOptions.credentials,
-      body: JSON.stringify(userData),
+      body: JSON.stringify(validatedUserData),
     });
 
     if (!response.ok) {
@@ -283,7 +323,10 @@ export class UsersApi {
     }
 
     console.log(`[${id}] Response received: ${response.status}`);
-    return this.parseResponse<User>(response);
+    const rawData = await this.parseResponse<unknown>(response);
+
+    // Validate response data
+    return UserValidator.validateUser(rawData, id);
   }
 
   /**
@@ -291,9 +334,13 @@ export class UsersApi {
    */
   async deleteUser(userId: number, correlationId?: string): Promise<void> {
     const id = correlationId || randomUUID();
-    console.log(`[${id}] DELETE ${this.baseUrl}/users/${userId}`);
 
-    const response = await fetch(`${this.baseUrl}/users/${userId}`, {
+    // Validate input parameters
+    const validatedUserId = UserValidator.validateUserId(userId, id);
+
+    console.log(`[${id}] DELETE ${this.baseUrl}/users/${validatedUserId}`);
+
+    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
       method: "DELETE",
       headers: {
         ...this.defaultHeaders,
