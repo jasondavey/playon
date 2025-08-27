@@ -18,6 +18,7 @@ import { ApiVersioningService, ApiVersioningFactory } from "./ApiVersioning.js";
 import { ValidationError } from "./UserValidator.js";
 import { RateLimitError, RateLimitOptions } from "./RateLimiter.js";
 import { AuthenticationError, AuthorizationError } from "./AuthService.js";
+import { CircuitBreakerFactory, CircuitBreaker } from "./CircuitBreaker.js";
 
 // Example usage
 async function main() {
@@ -454,6 +455,175 @@ async function main() {
     console.error("❌ Versioning demo error:", error);
   }
 
+  // === Circuit Breaker Demonstrations ===
+  console.log("\n" + "=".repeat(60));
+  console.log("🔄 CIRCUIT BREAKER DEMONSTRATIONS");
+  console.log("=".repeat(60));
+
+  try {
+    // Demo 1: Normal Operation with Circuit Breaker
+    console.log("\n📍 Demo 1: Normal Operation with Circuit Breaker");
+    console.log("Testing API calls with circuit breaker protection");
+
+    const circuitBreaker =
+      CircuitBreakerFactory.createApiCircuitBreaker("Demo-API");
+    const resilientApi = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      undefined,
+      circuitBreaker
+    );
+
+    await resilientApi.getUsers("circuit-demo-1");
+    console.log("✅ Normal operation successful with circuit breaker");
+    console.log("Circuit Breaker Metrics:", circuitBreaker.getMetrics());
+
+    // Demo 2: Simulated Failure Scenarios
+    console.log("\n📍 Demo 2: Simulated Failure and Recovery");
+    console.log("Testing circuit breaker behavior under failure conditions");
+
+    const failingApi = new UsersApi(
+      "https://nonexistent-api-endpoint.invalid", // This will fail
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      undefined,
+      circuitBreaker
+    );
+
+    // Attempt multiple failing requests to trigger circuit breaker
+    console.log(
+      "Attempting 6 requests to failing endpoint to trigger circuit breaker..."
+    );
+    for (let i = 1; i <= 6; i++) {
+      try {
+        await failingApi.getUsers(`circuit-failure-${i}`);
+      } catch (error) {
+        console.log(
+          `Request ${i} failed: ${
+            error instanceof Error
+              ? error.message.substring(0, 50)
+              : "Unknown error"
+          }...`
+        );
+      }
+
+      const metrics = circuitBreaker.getMetrics();
+      console.log(
+        `  State: ${metrics.state}, Failures: ${metrics.failureCount}/5`
+      );
+
+      if (metrics.state === "OPEN") {
+        console.log(
+          "🔴 Circuit breaker OPENED - Fast failing subsequent requests"
+        );
+        break;
+      }
+    }
+
+    // Demo 3: Fast Fail Behavior
+    console.log("\n📍 Demo 3: Fast Fail Behavior");
+    console.log("Testing fast fail when circuit is open");
+
+    try {
+      await failingApi.getUsers("circuit-fast-fail");
+    } catch (error) {
+      console.log(
+        "✅ Fast fail successful - Circuit breaker prevented unnecessary call"
+      );
+      console.log(
+        "Error type:",
+        error instanceof Error ? error.constructor.name : "Unknown"
+      );
+    }
+
+    // Demo 4: Automatic Recovery Attempt
+    console.log("\n📍 Demo 4: Automatic Recovery Simulation");
+    console.log("Waiting for circuit breaker timeout and testing recovery...");
+
+    // Force circuit to half-open for demo purposes
+    console.log("Simulating timeout by forcing circuit to attempt recovery...");
+
+    // Create a new circuit breaker with shorter timeout for demo
+    const quickRecoveryBreaker = new CircuitBreaker("Quick-Recovery", {
+      failureThreshold: 2,
+      successThreshold: 1,
+      timeout: 1000, // 1 second
+      monitoringPeriod: 5000,
+      fallback: async <T>(): Promise<T> => {
+        console.log("🔄 Fallback executed: Returning cached data");
+        return [
+          { id: 999, name: "Cached User", email: "cached@example.com" },
+        ] as T;
+      },
+    });
+
+    const recoveryApi = new UsersApi(
+      "https://jsonplaceholder.typicode.com", // Back to working endpoint
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      undefined,
+      quickRecoveryBreaker
+    );
+
+    // First, trigger the circuit breaker
+    quickRecoveryBreaker.forceOpen();
+    console.log("Circuit forced open for demonstration");
+
+    // Try request with fallback
+    try {
+      const result = await recoveryApi.getUsers("circuit-fallback-demo");
+      console.log("✅ Fallback successful - Received fallback data");
+    } catch (error) {
+      console.log("Fallback executed due to open circuit");
+    }
+
+    // Wait for timeout and test recovery
+    await new Promise((resolve) => setTimeout(resolve, 1100)); // Wait for timeout
+
+    console.log("Attempting recovery after timeout...");
+    try {
+      await recoveryApi.getUsers("circuit-recovery-demo");
+      console.log("✅ Circuit recovery successful - Service is healthy again");
+      console.log("Final metrics:", quickRecoveryBreaker.getMetrics());
+    } catch (error) {
+      console.log(
+        "Recovery attempt failed:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+
+    // Demo 5: Different Circuit Breaker Configurations
+    console.log("\n📍 Demo 5: Different Circuit Breaker Configurations");
+
+    const criticalServiceBreaker =
+      CircuitBreakerFactory.createCriticalServiceCircuitBreaker(
+        "Critical-Service"
+      );
+    const databaseBreaker =
+      CircuitBreakerFactory.createDatabaseCircuitBreaker("Database");
+
+    console.log("Critical Service Breaker - Low tolerance (2 failures)");
+    console.log("Database Breaker - Medium tolerance (3 failures)");
+    console.log("API Breaker - High tolerance (5 failures)");
+
+    console.log("✅ Multiple circuit breaker configurations demonstrated");
+  } catch (error) {
+    console.error("❌ Circuit breaker demo error:", error);
+  }
+
   console.log("\n" + "=".repeat(60));
   console.log("📊 DEMO SUMMARY");
   console.log("=".repeat(60));
@@ -466,6 +636,9 @@ async function main() {
   );
   console.log(
     "✅ API Versioning: Multiple negotiation strategies with deprecation support"
+  );
+  console.log(
+    "✅ Circuit Breaker: Resilience patterns with automatic recovery and fallbacks"
   );
   console.log(
     "✅ Error Handling: Comprehensive error handling with performance logging"
@@ -481,6 +654,8 @@ async function main() {
   console.log("  - Structured logging with correlation IDs");
   console.log("  - Rate limiting with graceful degradation");
   console.log("  - API versioning with backward compatibility");
+  console.log("  - Circuit breaker pattern for resilience");
+  console.log("  - Automatic failure detection and recovery");
   console.log("  - Performance monitoring and metrics collection");
   console.log("  - Idempotency support for safe retries");
   console.log("  - CORS handling and security headers");

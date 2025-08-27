@@ -4,6 +4,7 @@ import { RateLimiter, RateLimitOptions } from "./RateLimiter.js";
 import { AuthService } from "./AuthService.js";
 import { PerformanceMonitor, PerformanceTimer } from "./PerformanceMonitor.js";
 import { ApiVersioningService } from "./ApiVersioning.js";
+import { CircuitBreaker, CircuitBreakerFactory } from "./CircuitBreaker.js";
 
 /**
  * User data structure
@@ -93,6 +94,7 @@ export class UsersApi {
   private authService?: AuthService;
   private performanceMonitor?: PerformanceMonitor;
   private versioningService?: ApiVersioningService;
+  private circuitBreaker?: CircuitBreaker;
 
   constructor(
     baseUrl: string,
@@ -102,7 +104,8 @@ export class UsersApi {
     rateLimitOptions?: RateLimitOptions,
     authService?: AuthService,
     performanceMonitor?: PerformanceMonitor,
-    versioningService?: ApiVersioningService
+    versioningService?: ApiVersioningService,
+    circuitBreaker?: CircuitBreaker
   ) {
     this.baseUrl = baseUrl;
     this.defaultHeaders = defaultHeaders;
@@ -139,6 +142,11 @@ export class UsersApi {
 
     // Set versioning service
     this.versioningService = versioningService;
+
+    // Set circuit breaker or create default one
+    this.circuitBreaker =
+      circuitBreaker ||
+      CircuitBreakerFactory.createApiCircuitBreaker("UsersApi");
   }
 
   /**
@@ -801,6 +809,23 @@ export class UsersApi {
       timer?.startPhase("rateLimit");
       const result = await this.rateLimiter.execute(fn, correlationId);
       timer?.endPhase("rateLimit");
+      return result;
+    }
+    return fn();
+  }
+
+  /**
+   * Execute function with circuit breaker if enabled
+   */
+  private async executeWithCircuitBreaker<T>(
+    fn: () => Promise<T>,
+    correlationId: string,
+    timer?: PerformanceTimer
+  ): Promise<T> {
+    if (this.circuitBreaker) {
+      timer?.startPhase("circuitBreaker");
+      const result = await this.circuitBreaker.execute(fn, correlationId);
+      timer?.endPhase("circuitBreaker");
       return result;
     }
     return fn();
