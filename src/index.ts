@@ -771,6 +771,147 @@ async function main() {
 
   await demoCaching();
 
+  // === Health Check Demonstrations ===
+  console.log("\n" + "=".repeat(60));
+  console.log("🏥 HEALTH CHECK DEMONSTRATIONS");
+  console.log("=".repeat(60));
+
+  async function demoHealthChecks() {
+    console.log("\n" + "=".repeat(60));
+    console.log("🏥 DEMO 7: COMPREHENSIVE HEALTH CHECK SYSTEM");
+    console.log("=".repeat(60));
+
+    const authService = AuthServiceFactory.createDevelopment();
+    const performanceMonitor = PerformanceMonitorFactory.createDevelopment();
+    const versioningService = ApiVersioningFactory.createUrlPathVersioning();
+    const circuitBreaker = CircuitBreakerFactory.createApiCircuitBreaker("HealthDemo");
+
+    // Create API client with health monitoring
+    const api = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      { "Content-Type": "application/json" },
+      { credentials: "same-origin" },
+      {},
+      undefined,
+      authService,
+      performanceMonitor,
+      versioningService,
+      circuitBreaker
+    );
+
+    try {
+      // Scenario 1: Basic Health Check
+      console.log("\n🔍 Scenario 1: Basic System Health Check");
+      console.log("Performing comprehensive health assessment...");
+      const health = await api.getHealth();
+      console.log(`✅ System Status: ${health.status.toUpperCase()}`);
+      console.log(`📊 Components Checked: ${health.checks.length}`);
+      console.log(`⏱️  System Uptime: ${Math.round(health.uptime / 1000)}s`);
+      console.log(`🌍 Environment: ${health.environment}`);
+      
+      console.log("\n📋 Component Health Details:");
+      health.checks.forEach(check => {
+        const status = check.status === 'healthy' ? '✅' : 
+                      check.status === 'degraded' ? '⚠️' : '❌';
+        console.log(`  ${status} ${check.name}: ${check.status} (${check.responseTime}ms)`);
+        if (check.error) {
+          console.log(`    Error: ${check.error}`);
+        }
+        if (check.details) {
+          Object.entries(check.details).forEach(([key, value]) => {
+            console.log(`    ${key}: ${value}`);
+          });
+        }
+      });
+
+      // Scenario 2: Readiness Check
+      console.log("\n🚀 Scenario 2: Readiness Probe (Kubernetes-style)");
+      console.log("Checking if system is ready to serve traffic...");
+      const readiness = await api.getHealthReady();
+      console.log(`✅ System Ready: ${readiness.ready ? 'YES' : 'NO'}`);
+      console.log(`📊 Critical Components: ${readiness.health.checks.filter(c => c.status === 'healthy').length}/${readiness.health.checks.length} healthy`);
+
+      // Scenario 3: Liveness Check
+      console.log("\n💓 Scenario 3: Liveness Probe");
+      console.log("Performing basic liveness check...");
+      const liveness = await api.getHealthLive();
+      console.log(`✅ System Alive: ${liveness.alive ? 'YES' : 'NO'}`);
+      console.log(`⏰ Check Time: ${liveness.timestamp}`);
+
+      // Scenario 4: Cached Health Check
+      console.log("\n⚡ Scenario 4: Cached Health Check (Performance)");
+      console.log("Retrieving last cached health result...");
+      const startTime = Date.now();
+      const cachedHealth = api.getHealthCached();
+      const cacheTime = Date.now() - startTime;
+      
+      if (cachedHealth) {
+        console.log(`✅ Cached result retrieved in ${cacheTime}ms`);
+        console.log(`📊 Cached Status: ${cachedHealth.status}`);
+        console.log(`⏰ Cache Age: ${Math.round((Date.now() - new Date(cachedHealth.timestamp).getTime()) / 1000)}s`);
+      } else {
+        console.log("❌ No cached health data available");
+      }
+
+      // Scenario 5: Health Monitoring
+      console.log("\n📈 Scenario 5: Periodic Health Monitoring");
+      console.log("Starting background health monitoring...");
+      api.startHealthMonitoring();
+      console.log("✅ Health monitoring started (runs every 60 seconds)");
+      
+      // Wait a moment to show monitoring is active
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      console.log("🔄 Checking for updated health data...");
+      const monitoredHealth = api.getHealthCached();
+      if (monitoredHealth) {
+        console.log(`✅ Background monitoring active - last check: ${monitoredHealth.timestamp}`);
+      }
+      
+      // Stop monitoring for demo
+      api.stopHealthMonitoring();
+      console.log("⏹️  Health monitoring stopped");
+
+      // Scenario 6: Health Check Performance Comparison
+      console.log("\n📊 Scenario 6: Health Check Performance Analysis");
+      console.log("Comparing fresh vs cached health checks...");
+      
+      // Fresh health check
+      const freshStart = Date.now();
+      await api.getHealth();
+      const freshTime = Date.now() - freshStart;
+      
+      // Cached health check
+      const cachedStart = Date.now();
+      api.getHealthCached();
+      const cachedTime2 = Date.now() - cachedStart;
+      
+      console.log(`📊 Performance Comparison:`);
+      console.log(`   Fresh Health Check: ${freshTime}ms`);
+      console.log(`   Cached Health Check: ${cachedTime2}ms`);
+      console.log(`   Performance Gain: ${((freshTime - cachedTime2) / freshTime * 100).toFixed(1)}% faster`);
+
+      // Scenario 7: Health Check Integration with Other Systems
+      console.log("\n🔗 Scenario 7: Health Check Integration");
+      console.log("Demonstrating health checks with circuit breaker and caching...");
+      
+      const integratedHealth = await api.getHealth();
+      const cacheStats = api.getCacheStats();
+      const circuitBreakerMetrics = circuitBreaker.getMetrics();
+      
+      console.log("✅ Integrated System Status:");
+      console.log(`   Overall Health: ${integratedHealth.status}`);
+      console.log(`   Cache Hit Rate: ${cacheStats.hitRate}`);
+      console.log(`   Circuit Breaker: ${circuitBreakerMetrics.state}`);
+      console.log(`   Total Requests: ${circuitBreakerMetrics.totalRequests}`);
+
+    } catch (error) {
+      console.error("❌ Health check demo error:", error);
+    }
+  }
+
+  await demoHealthChecks();
+
   console.log("\n" + "=".repeat(60));
   console.log("📊 DEMO SUMMARY");
   console.log("=".repeat(60));

@@ -1,11 +1,12 @@
 import { randomUUID } from "crypto";
 import { UserValidator } from "./UserValidator.js";
 import { RateLimiter, RateLimitOptions } from "./RateLimiter.js";
-import { AuthService } from "./AuthService.js";
+import { AuthService } from './AuthService';
 import { PerformanceMonitor, PerformanceTimer } from "./PerformanceMonitor.js";
 import { ApiVersioningService } from "./ApiVersioning.js";
 import { CircuitBreaker, CircuitBreakerFactory } from "./CircuitBreaker.js";
 import { CacheManager, CacheFactory } from "./CacheManager.js";
+import { HealthCheckService, HealthCheckFactory, SystemHealth } from "./HealthCheck.js";
 
 /**
  * User data structure
@@ -97,6 +98,7 @@ export class UsersApi {
   private versioningService?: ApiVersioningService;
   private circuitBreaker?: CircuitBreaker;
   private cache: CacheManager<any>;
+  private healthCheckService: HealthCheckService;
 
   constructor(
     baseUrl: string,
@@ -152,7 +154,10 @@ export class UsersApi {
       CircuitBreakerFactory.createApiCircuitBreaker("UsersApi");
 
     // Set cache
-    this.cache = cache || CacheFactory.createApiCache<any>("users-api");
+    this.cache = cache || CacheFactory.createApiCache<any>('users-api');
+
+    // Initialize health check service
+    this.healthCheckService = HealthCheckFactory.createDevelopmentHealthCheck(this.cache);
   }
 
   /**
@@ -1241,5 +1246,83 @@ export class UsersApi {
         error instanceof Error ? error.message : "Unknown error"
       );
     }
+  }
+
+  /**
+   * Get comprehensive system health
+   */
+  async getHealth(correlationId?: string): Promise<SystemHealth> {
+    const id = correlationId || randomUUID();
+    
+    this.performanceMonitor?.logEvent(
+      id,
+      "GET",
+      "/health",
+      0,
+      200
+    );
+
+    return await this.healthCheckService.checkHealth();
+  }
+
+  /**
+   * Check if system is ready (all critical components healthy)
+   */
+  async getHealthReady(correlationId?: string): Promise<{ ready: boolean; health: SystemHealth }> {
+    const id = correlationId || randomUUID();
+    const health = await this.healthCheckService.checkHealth();
+    const ready = await this.healthCheckService.isReady();
+    
+    this.performanceMonitor?.logEvent(
+      id,
+      "GET",
+      "/health/ready",
+      0,
+      ready ? 200 : 503
+    );
+
+    return { ready, health };
+  }
+
+  /**
+   * Check if system is alive (basic liveness check)
+   */
+  async getHealthLive(correlationId?: string): Promise<{ alive: boolean; timestamp: string }> {
+    const id = correlationId || randomUUID();
+    const alive = await this.healthCheckService.isAlive();
+    
+    this.performanceMonitor?.logEvent(
+      id,
+      "GET",
+      "/health/live",
+      0,
+      200
+    );
+
+    return { 
+      alive, 
+      timestamp: new Date().toISOString() 
+    };
+  }
+
+  /**
+   * Get last cached health check result
+   */
+  getHealthCached(): SystemHealth | undefined {
+    return this.healthCheckService.getLastHealthCheck();
+  }
+
+  /**
+   * Start periodic health checks
+   */
+  startHealthMonitoring(): void {
+    this.healthCheckService.startPeriodicChecks();
+  }
+
+  /**
+   * Stop periodic health checks
+   */
+  stopHealthMonitoring(): void {
+    this.healthCheckService.stopPeriodicChecks();
   }
 }
