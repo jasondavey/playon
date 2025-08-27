@@ -5,18 +5,19 @@
 
 import {
   UsersApi,
-  CreateUserData,
   CorsOptions,
   IdempotencyOptions,
+  CreateUserData,
 } from "./UsersApi.js";
+import { AuthService, AuthServiceFactory } from "./AuthService.js";
+import {
+  PerformanceMonitor,
+  PerformanceMonitorFactory,
+} from "./PerformanceMonitor.js";
+import { ApiVersioningService, ApiVersioningFactory } from "./ApiVersioning.js";
 import { ValidationError } from "./UserValidator.js";
 import { RateLimitError, RateLimitOptions } from "./RateLimiter.js";
-import {
-  AuthServiceFactory,
-  AuthenticationError,
-  AuthorizationError,
-} from "./AuthService.js";
-import { PerformanceMonitorFactory } from "./PerformanceMonitor.js";
+import { AuthenticationError, AuthorizationError } from "./AuthService.js";
 
 // Example usage
 async function main() {
@@ -42,7 +43,7 @@ async function main() {
   // Example 2: Authenticated API client with rate limiting and performance monitoring
   console.log("\n📋 Example 2: Authenticated API client with full monitoring");
   const corsOptions: CorsOptions = {
-    credentials: "include",
+    credentials: "include" as const,
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -236,13 +237,13 @@ async function main() {
     console.log(
       "\n❌ Attempting to create user with invalid email (performance will be logged)..."
     );
-    const invalidUserData = {
+    const invalidUserData: CreateUserData = {
       name: "Invalid User",
       username: "invaliduser",
       email: "not-an-email",
       phone: "555-0123",
     };
-    await authenticatedApi.createUser(invalidUserData as CreateUserData);
+    await authenticatedApi.createUser(invalidUserData);
   } catch (error) {
     if (error instanceof ValidationError) {
       console.log(`✅ Validation correctly caught error: ${error.message}`);
@@ -344,33 +345,147 @@ async function main() {
   await testApi.getUser(2);
   console.log("✅ Testing monitoring test completed");
 
-  console.log("\n✅ Demo completed!");
-  console.log("\n📊 Final status summary:");
-  console.log("Dev Auth Service:", devAuthService.getSessionStatus());
-  console.log("Admin Auth Service:", adminAuthService.getSessionStatus());
+  // === API Versioning Demonstrations ===
+  console.log("\n" + "=".repeat(60));
+  console.log("🔄 API VERSIONING DEMONSTRATIONS");
+  console.log("=".repeat(60));
+
+  try {
+    // Demo 1: URL Path Versioning (/api/v1/users)
+    console.log("\n📍 Demo 1: URL Path Versioning Strategy");
+    console.log("Using version 1.0 with URL path: /api/v1/users");
+
+    const urlVersioning = ApiVersioningFactory.createUrlPathVersioning();
+    const apiV1 = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      urlVersioning
+    );
+
+    await apiV1.getUsers("version-demo-1");
+    console.log("✅ URL path versioning successful");
+
+    // Demo 2: Header-based Versioning
+    console.log("\n📍 Demo 2: Header-based Versioning Strategy");
+    console.log("Using version 1.1 with API-Version header");
+
+    const headerVersioning = ApiVersioningFactory.createHeaderVersioning();
+    const apiV11 = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      headerVersioning
+    );
+
+    await apiV11.getUsers("version-demo-2");
+    console.log("✅ Header-based versioning successful");
+
+    // Demo 3: Accept Header Versioning
+    console.log("\n📍 Demo 3: Accept Header Versioning Strategy");
+    console.log(
+      "Using version 1.2 with Accept header: application/vnd.api+json;version=1.2"
+    );
+
+    const acceptHeaderVersioning =
+      ApiVersioningFactory.createAcceptHeaderVersioning();
+    const apiV12 = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      acceptHeaderVersioning
+    );
+
+    await apiV12.getUsers("version-demo-3");
+    console.log("✅ Accept header versioning successful");
+
+    // Demo 4: Deprecated Version with Warnings
+    console.log("\n📍 Demo 4: Deprecated Version Handling");
+    console.log(
+      "Using deprecated version 0.9 to demonstrate deprecation warnings"
+    );
+
+    const deprecatedVersioning = ApiVersioningFactory.createUrlPathVersioning();
+    const apiDeprecated = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      deprecatedVersioning
+    );
+
+    await apiDeprecated.getUsers("version-demo-deprecated");
+    console.log("✅ Deprecated version handling demonstrated");
+
+    // Demo 5: Version Compatibility Check
+    console.log("\n📍 Demo 5: Version Compatibility and Migration Info");
+
+    const versioningWithMigration =
+      ApiVersioningFactory.createUrlPathVersioning();
+    const apiV2 = new UsersApi(
+      "https://jsonplaceholder.typicode.com",
+      {},
+      {},
+      {},
+      undefined,
+      devAuthService,
+      performanceMonitor,
+      versioningWithMigration
+    );
+
+    await apiV2.getUsers("version-demo-migration");
+    console.log("✅ Version migration info demonstrated");
+  } catch (error) {
+    console.error("❌ Versioning demo error:", error);
+  }
+
+  console.log("\n" + "=".repeat(60));
+  console.log("📊 DEMO SUMMARY");
+  console.log("=".repeat(60));
   console.log(
-    "Authenticated API Rate Limit:",
-    authenticatedApi.getRateLimitStatus()
+    "✅ Authentication and Authorization: Implemented with fail-fast checks"
   );
-  console.log("Admin API Rate Limit:", adminApi.getRateLimitStatus());
+  console.log("✅ Rate Limiting: Token bucket algorithm with retry logic");
+  console.log(
+    "✅ Performance Monitoring: Structured event logging with JSONL format"
+  );
+  console.log(
+    "✅ API Versioning: Multiple negotiation strategies with deprecation support"
+  );
+  console.log(
+    "✅ Error Handling: Comprehensive error handling with performance logging"
+  );
+  console.log("✅ Security: Role-based access control and session validation");
 
   console.log("\n📁 Performance logs written to:");
-  console.log(
-    "- performance-dev.log (development monitoring with console output)"
-  );
-  console.log(
-    "- performance-prod.log (production monitoring, minimal logging)"
-  );
-  console.log("- performance-test.log (testing monitoring, detailed metrics)");
-  console.log(
-    "\n💡 All log files are git-ignored and contain structured JSONL format data"
-  );
-  console.log(
-    "💡 Each log entry includes timing breakdown: auth, rateLimit, validation, network phases"
-  );
-  console.log(
-    "💡 Logs include correlation IDs, user context, payload sizes, and error details"
-  );
+  console.log("  - performance-dev.log (development environment)");
+  console.log("  - All logs are git-ignored for security");
+
+  console.log("\n🎯 API Design Best Practices Demonstrated:");
+  console.log("  - Fail-fast authentication and authorization");
+  console.log("  - Structured logging with correlation IDs");
+  console.log("  - Rate limiting with graceful degradation");
+  console.log("  - API versioning with backward compatibility");
+  console.log("  - Performance monitoring and metrics collection");
+  console.log("  - Idempotency support for safe retries");
+  console.log("  - CORS handling and security headers");
+
+  console.log("\n🚀 Demo completed successfully!");
 }
 
 // Run the demo

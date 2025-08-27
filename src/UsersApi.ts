@@ -3,6 +3,7 @@ import { UserValidator } from "./UserValidator.js";
 import { RateLimiter, RateLimitOptions } from "./RateLimiter.js";
 import { AuthService } from "./AuthService.js";
 import { PerformanceMonitor, PerformanceTimer } from "./PerformanceMonitor.js";
+import { ApiVersioningService } from "./ApiVersioning.js";
 
 /**
  * User data structure
@@ -91,6 +92,7 @@ export class UsersApi {
   private rateLimiter?: RateLimiter;
   private authService?: AuthService;
   private performanceMonitor?: PerformanceMonitor;
+  private versioningService?: ApiVersioningService;
 
   constructor(
     baseUrl: string,
@@ -99,7 +101,8 @@ export class UsersApi {
     idempotencyOptions: IdempotencyOptions = {},
     rateLimitOptions?: RateLimitOptions,
     authService?: AuthService,
-    performanceMonitor?: PerformanceMonitor
+    performanceMonitor?: PerformanceMonitor,
+    versioningService?: ApiVersioningService
   ) {
     this.baseUrl = baseUrl;
     this.defaultHeaders = defaultHeaders;
@@ -133,6 +136,9 @@ export class UsersApi {
 
     // Set performance monitor
     this.performanceMonitor = performanceMonitor;
+
+    // Set versioning service
+    this.versioningService = versioningService;
   }
 
   /**
@@ -147,7 +153,8 @@ export class UsersApi {
         async () => {
           return this.executeWithRateLimit(async () => {
             timer?.startPhase("network");
-            console.log(`[${id}] GET ${this.baseUrl}/users`);
+            const url = this.buildVersionedUrl("/users");
+            console.log(`[${id}] GET ${url}`);
 
             const requestSize = this.calculateHeadersSize({
               ...this.defaultHeaders,
@@ -156,19 +163,21 @@ export class UsersApi {
               ...this.getRateLimitHeaders(),
             });
 
-            const response = await fetch(`${this.baseUrl}/users`, {
+            const response = await fetch(url, {
               method: "GET",
-              headers: {
+              headers: this.addVersionHeaders({
                 ...this.defaultHeaders,
                 "X-Correlation-ID": id,
                 ...this.getAuthHeaders(id),
                 ...this.getRateLimitHeaders(),
-              },
+              }),
               credentials: this.corsOptions.credentials,
             });
 
             timer?.endPhase("network");
             timer?.startPhase("validation");
+
+            this.handleVersionResponse(response);
 
             if (!response.ok) {
               console.error(
@@ -191,7 +200,7 @@ export class UsersApi {
               timer,
               id,
               "GET",
-              `${this.baseUrl}/users`,
+              url,
               response.status,
               requestSize,
               this.calculateResponseSize(result)
@@ -209,7 +218,7 @@ export class UsersApi {
         timer,
         id,
         "GET",
-        `${this.baseUrl}/users`,
+        this.buildVersionedUrl("/users"),
         undefined,
         undefined,
         undefined,
@@ -234,7 +243,8 @@ export class UsersApi {
         async () => {
           return this.executeWithRateLimit(async () => {
             timer?.startPhase("network");
-            console.log(`[${id}] GET ${this.baseUrl}/users/${validatedUserId}`);
+            const url = this.buildVersionedUrl(`/users/${validatedUserId}`);
+            console.log(`[${id}] GET ${url}`);
 
             const requestSize = this.calculateHeadersSize({
               ...this.defaultHeaders,
@@ -243,22 +253,21 @@ export class UsersApi {
               ...this.getRateLimitHeaders(),
             });
 
-            const response = await fetch(
-              `${this.baseUrl}/users/${validatedUserId}`,
-              {
-                method: "GET",
-                headers: {
-                  ...this.defaultHeaders,
-                  "X-Correlation-ID": id,
-                  ...this.getAuthHeaders(id),
-                  ...this.getRateLimitHeaders(),
-                },
-                credentials: this.corsOptions.credentials,
-              }
-            );
+            const response = await fetch(url, {
+              method: "GET",
+              headers: this.addVersionHeaders({
+                ...this.defaultHeaders,
+                "X-Correlation-ID": id,
+                ...this.getAuthHeaders(id),
+                ...this.getRateLimitHeaders(),
+              }),
+              credentials: this.corsOptions.credentials,
+            });
 
             timer?.endPhase("network");
             timer?.startPhase("validation");
+
+            this.handleVersionResponse(response);
 
             if (!response.ok) {
               console.error(
@@ -281,7 +290,7 @@ export class UsersApi {
               timer,
               id,
               "GET",
-              `${this.baseUrl}/users/${validatedUserId}`,
+              url,
               response.status,
               requestSize,
               this.calculateResponseSize(result)
@@ -299,7 +308,7 @@ export class UsersApi {
         timer,
         id,
         "GET",
-        `${this.baseUrl}/users/${validatedUserId}`,
+        this.buildVersionedUrl(`/users/${validatedUserId}`),
         undefined,
         undefined,
         undefined,
@@ -331,7 +340,8 @@ export class UsersApi {
         async () => {
           return this.executeWithRateLimit(async () => {
             timer?.startPhase("network");
-            console.log(`[${id}] POST ${this.baseUrl}/users`);
+            const url = this.buildVersionedUrl("/users");
+            console.log(`[${id}] POST ${url}`);
 
             const headers: Record<string, string> = {
               ...this.defaultHeaders,
@@ -355,15 +365,17 @@ export class UsersApi {
               this.calculateHeadersSize(headers) +
               Buffer.byteLength(requestBody, "utf8");
 
-            const response = await fetch(`${this.baseUrl}/users`, {
+            const response = await fetch(url, {
               method: "POST",
-              headers,
+              headers: this.addVersionHeaders(headers),
               credentials: this.corsOptions.credentials,
               body: requestBody,
             });
 
             timer?.endPhase("network");
             timer?.startPhase("validation");
+
+            this.handleVersionResponse(response);
 
             if (!response.ok) {
               console.error(
@@ -386,7 +398,7 @@ export class UsersApi {
               timer,
               id,
               "POST",
-              `${this.baseUrl}/users`,
+              url,
               response.status,
               requestSize,
               this.calculateResponseSize(result)
@@ -404,7 +416,7 @@ export class UsersApi {
         timer,
         id,
         "POST",
-        `${this.baseUrl}/users`,
+        this.buildVersionedUrl("/users"),
         undefined,
         undefined,
         undefined,
@@ -438,7 +450,8 @@ export class UsersApi {
         async () => {
           return this.executeWithRateLimit(async () => {
             timer?.startPhase("network");
-            console.log(`[${id}] PUT ${this.baseUrl}/users/${validatedUserId}`);
+            const url = this.buildVersionedUrl(`/users/${validatedUserId}`);
+            console.log(`[${id}] PUT ${url}`);
 
             const headers: Record<string, string> = {
               ...this.defaultHeaders,
@@ -462,18 +475,17 @@ export class UsersApi {
               this.calculateHeadersSize(headers) +
               Buffer.byteLength(requestBody, "utf8");
 
-            const response = await fetch(
-              `${this.baseUrl}/users/${validatedUserId}`,
-              {
-                method: "PUT",
-                headers,
-                credentials: this.corsOptions.credentials,
-                body: requestBody,
-              }
-            );
+            const response = await fetch(url, {
+              method: "PUT",
+              headers: this.addVersionHeaders(headers),
+              credentials: this.corsOptions.credentials,
+              body: requestBody,
+            });
 
             timer?.endPhase("network");
             timer?.startPhase("validation");
+
+            this.handleVersionResponse(response);
 
             if (!response.ok) {
               console.error(
@@ -496,7 +508,7 @@ export class UsersApi {
               timer,
               id,
               "PUT",
-              `${this.baseUrl}/users/${validatedUserId}`,
+              url,
               response.status,
               requestSize,
               this.calculateResponseSize(result)
@@ -514,7 +526,7 @@ export class UsersApi {
         timer,
         id,
         "PUT",
-        `${this.baseUrl}/users/${validatedUserId}`,
+        this.buildVersionedUrl(`/users/${validatedUserId}`),
         undefined,
         undefined,
         undefined,
@@ -548,9 +560,8 @@ export class UsersApi {
         async () => {
           return this.executeWithRateLimit(async () => {
             timer?.startPhase("network");
-            console.log(
-              `[${id}] PATCH ${this.baseUrl}/users/${validatedUserId}`
-            );
+            const url = this.buildVersionedUrl(`/users/${validatedUserId}`);
+            console.log(`[${id}] PATCH ${url}`);
 
             const headers: Record<string, string> = {
               ...this.defaultHeaders,
@@ -574,18 +585,17 @@ export class UsersApi {
               this.calculateHeadersSize(headers) +
               Buffer.byteLength(requestBody, "utf8");
 
-            const response = await fetch(
-              `${this.baseUrl}/users/${validatedUserId}`,
-              {
-                method: "PATCH",
-                headers,
-                credentials: this.corsOptions.credentials,
-                body: requestBody,
-              }
-            );
+            const response = await fetch(url, {
+              method: "PATCH",
+              headers: this.addVersionHeaders(headers),
+              credentials: this.corsOptions.credentials,
+              body: requestBody,
+            });
 
             timer?.endPhase("network");
             timer?.startPhase("validation");
+
+            this.handleVersionResponse(response);
 
             if (!response.ok) {
               console.error(
@@ -608,7 +618,7 @@ export class UsersApi {
               timer,
               id,
               "PATCH",
-              `${this.baseUrl}/users/${validatedUserId}`,
+              url,
               response.status,
               requestSize,
               this.calculateResponseSize(result)
@@ -626,7 +636,7 @@ export class UsersApi {
         timer,
         id,
         "PATCH",
-        `${this.baseUrl}/users/${validatedUserId}`,
+        this.buildVersionedUrl(`/users/${validatedUserId}`),
         undefined,
         undefined,
         undefined,
@@ -651,9 +661,8 @@ export class UsersApi {
         async () => {
           return this.executeWithRateLimit(async () => {
             timer?.startPhase("network");
-            console.log(
-              `[${id}] DELETE ${this.baseUrl}/users/${validatedUserId}`
-            );
+            const url = this.buildVersionedUrl(`/users/${validatedUserId}`);
+            console.log(`[${id}] DELETE ${url}`);
 
             const requestSize = this.calculateHeadersSize({
               ...this.defaultHeaders,
@@ -662,21 +671,20 @@ export class UsersApi {
               ...this.getRateLimitHeaders(),
             });
 
-            const response = await fetch(
-              `${this.baseUrl}/users/${validatedUserId}`,
-              {
-                method: "DELETE",
-                headers: {
-                  ...this.defaultHeaders,
-                  "X-Correlation-ID": id,
-                  ...this.getAuthHeaders(id),
-                  ...this.getRateLimitHeaders(),
-                },
-                credentials: this.corsOptions.credentials,
-              }
-            );
+            const response = await fetch(url, {
+              method: "DELETE",
+              headers: this.addVersionHeaders({
+                ...this.defaultHeaders,
+                "X-Correlation-ID": id,
+                ...this.getAuthHeaders(id),
+                ...this.getRateLimitHeaders(),
+              }),
+              credentials: this.corsOptions.credentials,
+            });
 
             timer?.endPhase("network");
+
+            this.handleVersionResponse(response);
 
             if (!response.ok) {
               console.error(
@@ -694,7 +702,7 @@ export class UsersApi {
               timer,
               id,
               "DELETE",
-              `${this.baseUrl}/users/${validatedUserId}`,
+              url,
               response.status,
               requestSize,
               0
@@ -710,7 +718,7 @@ export class UsersApi {
         timer,
         id,
         "DELETE",
-        `${this.baseUrl}/users/${validatedUserId}`,
+        this.buildVersionedUrl(`/users/${validatedUserId}`),
         undefined,
         undefined,
         undefined,
@@ -753,6 +761,13 @@ export class UsersApi {
    */
   public setPerformanceMonitor(performanceMonitor: PerformanceMonitor): void {
     this.performanceMonitor = performanceMonitor;
+  }
+
+  /**
+   * Set versioning service
+   */
+  public setVersioningService(versioningService: ApiVersioningService): void {
+    this.versioningService = versioningService;
   }
 
   /**
@@ -898,6 +913,66 @@ export class UsersApi {
           error instanceof Error ? error.message : "Unknown error"
         }. Response: ${text.slice(0, 100)}`
       );
+    }
+  }
+
+  /**
+   * Build versioned URL
+   */
+  private buildVersionedUrl(endpoint: string): string {
+    if (this.versioningService) {
+      // Use negotiateVersion to get the proper version and URL
+      const versionedRequest = this.versioningService.negotiateVersion(
+        `${this.baseUrl}${endpoint}`,
+        {},
+        {}
+      );
+      return versionedRequest.url;
+    }
+    return `${this.baseUrl}${endpoint}`;
+  }
+
+  /**
+   * Add version headers
+   */
+  private addVersionHeaders(
+    headers: Record<string, string>
+  ): Record<string, string> {
+    if (this.versioningService) {
+      // Use negotiateVersion to get the proper headers
+      const versionedRequest = this.versioningService.negotiateVersion(
+        `${this.baseUrl}/`,
+        headers,
+        {}
+      );
+      return { ...headers, ...versionedRequest.headers };
+    }
+    return headers;
+  }
+
+  /**
+   * Handle version response
+   */
+  private handleVersionResponse(response: Response): void {
+    if (this.versioningService) {
+      // Check for deprecation warnings in response headers
+      const deprecationWarning = response.headers.get("Deprecation");
+      const sunsetHeader = response.headers.get("Sunset");
+      const apiVersion = response.headers.get("API-Version");
+
+      if (deprecationWarning) {
+        console.warn(
+          `⚠️  API Version Deprecation Warning: ${deprecationWarning}`
+        );
+      }
+
+      if (sunsetHeader) {
+        console.warn(`⚠️  API Version Sunset Date: ${sunsetHeader}`);
+      }
+
+      if (apiVersion) {
+        console.log(`📋 API Version: ${apiVersion}`);
+      }
     }
   }
 }
