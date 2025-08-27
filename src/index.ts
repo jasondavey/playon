@@ -905,12 +905,45 @@ async function main() {
       console.log(`   Circuit Breaker: ${circuitBreakerMetrics.state}`);
       console.log(`   Total Requests: ${circuitBreakerMetrics.totalRequests}`);
 
+      // Clean up background processes to allow graceful exit
+      console.log("\n🧹 Stopping health monitoring for demo completion...");
+      api.stopHealthMonitoring();
+      console.log("✅ Health monitoring stopped - process will exit gracefully.");
+
     } catch (error) {
       console.error("❌ Health check demo error:", error);
     }
+    
+    // Return the API instance for cleanup
+    return api;
   }
 
-  await demoHealthChecks();
+  let healthMonitoringApi: any = null;
+  
+  try {
+    healthMonitoringApi = await demoHealthChecks();
+  } catch (error) {
+    console.error("❌ Health check demo failed:", error);
+  }
+  
+  // Comprehensive cleanup of all background processes
+  console.log("\n🧹 Final cleanup: Stopping all background processes...");
+  
+  // Stop health monitoring if it exists
+  if (healthMonitoringApi) {
+    try {
+      healthMonitoringApi.stopHealthMonitoring();
+      console.log("✅ Health monitoring stopped");
+    } catch (cleanupError) {
+      console.error("⚠️ Health monitoring cleanup error:", cleanupError);
+    }
+  }
+  
+  // Force exit after a brief delay to ensure all cleanup completes
+  setTimeout(() => {
+    console.log("✅ All background processes stopped - exiting gracefully.");
+    process.exit(0);
+  }, 100);
 
   console.log("\n" + "=".repeat(60));
   console.log("📊 DEMO SUMMARY");
