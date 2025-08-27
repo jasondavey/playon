@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { UserValidator } from "./UserValidator.js";
+import { RateLimiter, RateLimitOptions } from "./RateLimiter.js";
 
 /**
  * User data structure
@@ -78,19 +79,21 @@ export interface IdempotencyOptions {
 }
 
 /**
- * Users API client with CORS, idempotency, and correlation ID support
+ * Users API client with CORS, idempotency, correlation ID, and rate limiting support
  */
 export class UsersApi {
   private baseUrl: string;
   private defaultHeaders: Record<string, string>;
   private corsOptions: CorsOptions;
   private idempotencyOptions: IdempotencyOptions;
+  private rateLimiter?: RateLimiter;
 
   constructor(
     baseUrl: string,
     defaultHeaders: Record<string, string> = {},
     corsOptions: CorsOptions = {},
-    idempotencyOptions: IdempotencyOptions = {}
+    idempotencyOptions: IdempotencyOptions = {},
+    rateLimitOptions?: RateLimitOptions
   ) {
     this.baseUrl = baseUrl;
     this.defaultHeaders = defaultHeaders;
@@ -107,6 +110,11 @@ export class UsersApi {
       enableRetryReuse: false,
       ...idempotencyOptions,
     };
+
+    // Initialize rate limiter if options provided
+    if (rateLimitOptions) {
+      this.rateLimiter = new RateLimiter(rateLimitOptions);
+    }
   }
 
   /**
@@ -114,27 +122,33 @@ export class UsersApi {
    */
   async getUsers(correlationId?: string): Promise<User[]> {
     const id = correlationId || randomUUID();
-    console.log(`[${id}] GET ${this.baseUrl}/users`);
 
-    const response = await fetch(`${this.baseUrl}/users`, {
-      method: "GET",
-      headers: {
-        ...this.defaultHeaders,
-        "X-Correlation-ID": id,
-      },
-      credentials: this.corsOptions.credentials,
-    });
+    return this.executeWithRateLimit(async () => {
+      console.log(`[${id}] GET ${this.baseUrl}/users`);
 
-    if (!response.ok) {
-      console.error(`[${id}] HTTP ${response.status}: ${response.statusText}`);
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+      const response = await fetch(`${this.baseUrl}/users`, {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+          "X-Correlation-ID": id,
+          ...this.getRateLimitHeaders(),
+        },
+        credentials: this.corsOptions.credentials,
+      });
 
-    console.log(`[${id}] Response received: ${response.status}`);
-    const rawData = await this.parseResponse<unknown>(response);
+      if (!response.ok) {
+        console.error(
+          `[${id}] HTTP ${response.status}: ${response.statusText}`
+        );
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    // Validate response data
-    return UserValidator.validateUsersArray(rawData, id);
+      console.log(`[${id}] Response received: ${response.status}`);
+      const rawData = await this.parseResponse<unknown>(response);
+
+      // Validate response data
+      return UserValidator.validateUsersArray(rawData, id);
+    }, id);
   }
 
   /**
@@ -146,27 +160,32 @@ export class UsersApi {
     // Validate input parameters
     const validatedUserId = UserValidator.validateUserId(userId, id);
 
-    console.log(`[${id}] GET ${this.baseUrl}/users/${validatedUserId}`);
+    return this.executeWithRateLimit(async () => {
+      console.log(`[${id}] GET ${this.baseUrl}/users/${validatedUserId}`);
 
-    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
-      method: "GET",
-      headers: {
-        ...this.defaultHeaders,
-        "X-Correlation-ID": id,
-      },
-      credentials: this.corsOptions.credentials,
-    });
+      const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+          "X-Correlation-ID": id,
+          ...this.getRateLimitHeaders(),
+        },
+        credentials: this.corsOptions.credentials,
+      });
 
-    if (!response.ok) {
-      console.error(`[${id}] HTTP ${response.status}: ${response.statusText}`);
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+      if (!response.ok) {
+        console.error(
+          `[${id}] HTTP ${response.status}: ${response.statusText}`
+        );
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    console.log(`[${id}] Response received: ${response.status}`);
-    const rawData = await this.parseResponse<unknown>(response);
+      console.log(`[${id}] Response received: ${response.status}`);
+      const rawData = await this.parseResponse<unknown>(response);
 
-    // Validate response data
-    return UserValidator.validateUser(rawData, id);
+      // Validate response data
+      return UserValidator.validateUser(rawData, id);
+    }, id);
   }
 
   /**
@@ -185,40 +204,45 @@ export class UsersApi {
       id
     );
 
-    console.log(`[${id}] POST ${this.baseUrl}/users`);
+    return this.executeWithRateLimit(async () => {
+      console.log(`[${id}] POST ${this.baseUrl}/users`);
 
-    const headers: Record<string, string> = {
-      ...this.defaultHeaders,
-      "Content-Type": "application/json",
-      "X-Correlation-ID": id,
-    };
+      const headers: Record<string, string> = {
+        ...this.defaultHeaders,
+        "Content-Type": "application/json",
+        "X-Correlation-ID": id,
+        ...this.getRateLimitHeaders(),
+      };
 
-    // Add idempotency key if enabled or explicitly provided
-    if (this.idempotencyOptions.enabled || idempotencyKey) {
-      const key = idempotencyKey || randomUUID();
-      const headerName =
-        this.idempotencyOptions.headerName || "Idempotency-Key";
-      headers[headerName] = key;
-      console.log(`[${id}] Idempotency-Key: ${key}`);
-    }
+      // Add idempotency key if enabled or explicitly provided
+      if (this.idempotencyOptions.enabled || idempotencyKey) {
+        const key = idempotencyKey || randomUUID();
+        const headerName =
+          this.idempotencyOptions.headerName || "Idempotency-Key";
+        headers[headerName] = key;
+        console.log(`[${id}] Idempotency-Key: ${key}`);
+      }
 
-    const response = await fetch(`${this.baseUrl}/users`, {
-      method: "POST",
-      headers,
-      credentials: this.corsOptions.credentials,
-      body: JSON.stringify(validatedUserData),
-    });
+      const response = await fetch(`${this.baseUrl}/users`, {
+        method: "POST",
+        headers,
+        credentials: this.corsOptions.credentials,
+        body: JSON.stringify(validatedUserData),
+      });
 
-    if (!response.ok) {
-      console.error(`[${id}] HTTP ${response.status}: ${response.statusText}`);
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+      if (!response.ok) {
+        console.error(
+          `[${id}] HTTP ${response.status}: ${response.statusText}`
+        );
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    console.log(`[${id}] Response received: ${response.status}`);
-    const rawData = await this.parseResponse<unknown>(response);
+      console.log(`[${id}] Response received: ${response.status}`);
+      const rawData = await this.parseResponse<unknown>(response);
 
-    // Validate response data
-    return UserValidator.validateUser(rawData, id);
+      // Validate response data
+      return UserValidator.validateUser(rawData, id);
+    }, id);
   }
 
   /**
@@ -239,40 +263,45 @@ export class UsersApi {
       id
     );
 
-    console.log(`[${id}] PUT ${this.baseUrl}/users/${validatedUserId}`);
+    return this.executeWithRateLimit(async () => {
+      console.log(`[${id}] PUT ${this.baseUrl}/users/${validatedUserId}`);
 
-    const headers: Record<string, string> = {
-      ...this.defaultHeaders,
-      "Content-Type": "application/json",
-      "X-Correlation-ID": id,
-    };
+      const headers: Record<string, string> = {
+        ...this.defaultHeaders,
+        "Content-Type": "application/json",
+        "X-Correlation-ID": id,
+        ...this.getRateLimitHeaders(),
+      };
 
-    // Add idempotency key if enabled or explicitly provided
-    if (this.idempotencyOptions.enabled || idempotencyKey) {
-      const key = idempotencyKey || randomUUID();
-      const headerName =
-        this.idempotencyOptions.headerName || "Idempotency-Key";
-      headers[headerName] = key;
-      console.log(`[${id}] Idempotency-Key: ${key}`);
-    }
+      // Add idempotency key if enabled or explicitly provided
+      if (this.idempotencyOptions.enabled || idempotencyKey) {
+        const key = idempotencyKey || randomUUID();
+        const headerName =
+          this.idempotencyOptions.headerName || "Idempotency-Key";
+        headers[headerName] = key;
+        console.log(`[${id}] Idempotency-Key: ${key}`);
+      }
 
-    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
-      method: "PUT",
-      headers,
-      credentials: this.corsOptions.credentials,
-      body: JSON.stringify(validatedUserData),
-    });
+      const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
+        method: "PUT",
+        headers,
+        credentials: this.corsOptions.credentials,
+        body: JSON.stringify(validatedUserData),
+      });
 
-    if (!response.ok) {
-      console.error(`[${id}] HTTP ${response.status}: ${response.statusText}`);
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+      if (!response.ok) {
+        console.error(
+          `[${id}] HTTP ${response.status}: ${response.statusText}`
+        );
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    console.log(`[${id}] Response received: ${response.status}`);
-    const rawData = await this.parseResponse<unknown>(response);
+      console.log(`[${id}] Response received: ${response.status}`);
+      const rawData = await this.parseResponse<unknown>(response);
 
-    // Validate response data
-    return UserValidator.validateUser(rawData, id);
+      // Validate response data
+      return UserValidator.validateUser(rawData, id);
+    }, id);
   }
 
   /**
@@ -293,40 +322,45 @@ export class UsersApi {
       id
     );
 
-    console.log(`[${id}] PATCH ${this.baseUrl}/users/${validatedUserId}`);
+    return this.executeWithRateLimit(async () => {
+      console.log(`[${id}] PATCH ${this.baseUrl}/users/${validatedUserId}`);
 
-    const headers: Record<string, string> = {
-      ...this.defaultHeaders,
-      "Content-Type": "application/json",
-      "X-Correlation-ID": id,
-    };
+      const headers: Record<string, string> = {
+        ...this.defaultHeaders,
+        "Content-Type": "application/json",
+        "X-Correlation-ID": id,
+        ...this.getRateLimitHeaders(),
+      };
 
-    // Add idempotency key if enabled or explicitly provided
-    if (this.idempotencyOptions.enabled || idempotencyKey) {
-      const key = idempotencyKey || randomUUID();
-      const headerName =
-        this.idempotencyOptions.headerName || "Idempotency-Key";
-      headers[headerName] = key;
-      console.log(`[${id}] Idempotency-Key: ${key}`);
-    }
+      // Add idempotency key if enabled or explicitly provided
+      if (this.idempotencyOptions.enabled || idempotencyKey) {
+        const key = idempotencyKey || randomUUID();
+        const headerName =
+          this.idempotencyOptions.headerName || "Idempotency-Key";
+        headers[headerName] = key;
+        console.log(`[${id}] Idempotency-Key: ${key}`);
+      }
 
-    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
-      method: "PATCH",
-      headers,
-      credentials: this.corsOptions.credentials,
-      body: JSON.stringify(validatedUserData),
-    });
+      const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
+        method: "PATCH",
+        headers,
+        credentials: this.corsOptions.credentials,
+        body: JSON.stringify(validatedUserData),
+      });
 
-    if (!response.ok) {
-      console.error(`[${id}] HTTP ${response.status}: ${response.statusText}`);
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+      if (!response.ok) {
+        console.error(
+          `[${id}] HTTP ${response.status}: ${response.statusText}`
+        );
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    console.log(`[${id}] Response received: ${response.status}`);
-    const rawData = await this.parseResponse<unknown>(response);
+      console.log(`[${id}] Response received: ${response.status}`);
+      const rawData = await this.parseResponse<unknown>(response);
 
-    // Validate response data
-    return UserValidator.validateUser(rawData, id);
+      // Validate response data
+      return UserValidator.validateUser(rawData, id);
+    }, id);
   }
 
   /**
@@ -338,23 +372,62 @@ export class UsersApi {
     // Validate input parameters
     const validatedUserId = UserValidator.validateUserId(userId, id);
 
-    console.log(`[${id}] DELETE ${this.baseUrl}/users/${validatedUserId}`);
+    return this.executeWithRateLimit(async () => {
+      console.log(`[${id}] DELETE ${this.baseUrl}/users/${validatedUserId}`);
 
-    const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
-      method: "DELETE",
-      headers: {
-        ...this.defaultHeaders,
-        "X-Correlation-ID": id,
-      },
-      credentials: this.corsOptions.credentials,
-    });
+      const response = await fetch(`${this.baseUrl}/users/${validatedUserId}`, {
+        method: "DELETE",
+        headers: {
+          ...this.defaultHeaders,
+          "X-Correlation-ID": id,
+          ...this.getRateLimitHeaders(),
+        },
+        credentials: this.corsOptions.credentials,
+      });
 
-    if (!response.ok) {
-      console.error(`[${id}] HTTP ${response.status}: ${response.statusText}`);
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (!response.ok) {
+        console.error(
+          `[${id}] HTTP ${response.status}: ${response.statusText}`
+        );
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      console.log(`[${id}] Response received: ${response.status}`);
+    }, id);
+  }
+
+  /**
+   * Get current rate limit status
+   */
+  public getRateLimitStatus() {
+    return this.rateLimiter?.getStatus();
+  }
+
+  /**
+   * Reset rate limiter (useful for testing)
+   */
+  public resetRateLimit(): void {
+    this.rateLimiter?.reset();
+  }
+
+  /**
+   * Execute function with rate limiting if enabled
+   */
+  private async executeWithRateLimit<T>(
+    fn: () => Promise<T>,
+    correlationId: string
+  ): Promise<T> {
+    if (this.rateLimiter) {
+      return this.rateLimiter.execute(fn, correlationId);
     }
+    return fn();
+  }
 
-    console.log(`[${id}] Response received: ${response.status}`);
+  /**
+   * Get rate limit headers if rate limiter is enabled
+   */
+  private getRateLimitHeaders(): Record<string, string> {
+    return this.rateLimiter?.getHeaders() || {};
   }
 
   private async parseResponse<T>(response: Response): Promise<T> {
